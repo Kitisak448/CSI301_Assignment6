@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bank DApp Assignment</title>
+    <!-- โหลดไลบรารี ethers.js สำหรับเชื่อมต่อ MetaMask และ Smart Contract -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 500px;
+            margin: 40px auto;
+            background: #fff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        h2,
+        h3 {
+            color: #2c3e50;
+            text-align: center;
+        }
+
+        .student-info {
+            background: #e8f4fd;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: bold;
+            color: #1d6fa5;
+            text-align: center;
+        }
+
+        .card {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            background: #fafafa;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            margin-top: 8px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        button:hover {
+            background-color: #2980b9;
+        }
+
+        input {
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        .status {
+            font-size: 14px;
+            color: #e74c3c;
+            margin-top: 5px;
+            text-align: center;
+        }
+
+        .success {
+            color: #27ae60;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <!-- แสดงรหัสและชื่อ-สกุล ตามโจทย์ -->
+        <div class="student-info">
+            รหัสนักศึกษา: 66099934<br>
+            ชื่อ-สกุล: นายกิติศักดิ์ สุรพัฒน์ไพดิษฐ์
+        </div>
+
+        <h2>Bank DApp System</h2>
+
+        <!-- ส่วนเชื่อมต่อ MetaMask -->
+        <div class="card">
+            <button id="connectWalletBtn">1. เชื่อมต่อ MetaMask</button>
+            <p id="walletAddress" class="status">สถานะ: ยังไม่ได้เชื่อมต่อ</p>
+        </div>
+
+        <!-- ส่วนเช็คยอดเงิน -->
+        <div class="card">
+            <h3>ตรวจสอบยอดเงิน</h3>
+            <button id="checkBalanceBtn">Check Balance</button>
+            <p id="balanceDisplay" style="text-align:center; font-weight:bold; margin-top:10px;">ยอดเงินในบัญชี: - ETH
+            </p>
+        </div>
+
+        <!-- ส่วนฝากเงิน -->
+        <div class="card">
+            <h3>ฝากเงิน (Deposit)</h3>
+            <label>จำนวน ETH:</label>
+            <input type="number" id="depositAmount" step="0.01" placeholder="0.1">
+            <button id="depositBtn">Deposit</button>
+        </div>
+
+        <!-- ส่วนถอนเงิน -->
+        <div class="card">
+            <h3>ถอนเงิน (Withdraw)</h3>
+            <label>จำนวน Wei (หรือแปลงหน่วย):</label>
+            <input type="text" id="withdrawAmount" placeholder="ระบุจำนวนหน่วย Wei">
+            <button id="withdrawBtn">Withdraw</button>
+        </div>
+    </div>
+
+    <script>
+        // กำหนด Smart Contract Address ที่คุณ Deploy แล้วนำมาใส่ตรงนี้
+        const contractAddress = "0xdDaCeBB0D8D5fB0DDf6dc4f5b3F93f85d1f76422";
+
+        // ABI ของ Smart Contract ตามโจทย์เป๊ะๆ
+        const contractABI = [
+            { "inputs": [], "name": "checkBlance", "outputs": [{ "internalType": "uint256", "name": "balance", "type": "uint256" }], "stateMutability": "view", "type": "function" },
+            { "inputs": [], "name": "deposit", "outputs": [], "stateMutability": "payable", "type": "function" },
+            { "inputs": [{ "internalType": "uint256", "name": "amount", "type": "uint256" }], "name": "withdraw", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
+            { "anonymous": false, "inputs": [{ "indexed": true, "internalType": "address", "name": "owner", "type": "address" }, { "indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256" }], "name": "Deposit", "type": "event" },
+            { "anonymous": false, "inputs": [{ "indexed": true, "internalType": "address", "name": "owner", "type": "address" }, { "indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256" }], "name": "Withdraw", "type": "event" }
+        ];
+
+        let provider, signer, bankContract;
+
+        document.getElementById("connectWalletBtn").addEventListener("click", async () => {
+            if (typeof window.ethereum !== "undefined") {
+                try {
+                    provider = new ethers.providers.Web3Provider(window.ethereum);
+                    await provider.send("eth_requestAccounts", []);
+                    signer = provider.getSigner();
+                    const address = await signer.getAddress();
+
+                    // แก้ไขจุดที่เป็นบั๊กเรียบร้อยแล้ว
+                    document.getElementById("walletAddress").innerText = `เชื่อมต่อแล้ว: ${address.substring(0, 6)}...${address.substring(38)}`;
+                    document.getElementById("walletAddress").className = "status success";
+
+                    bankContract = new ethers.Contract(contractAddress, contractABI, signer);
+                } catch (error) {
+                    console.error(error);
+                    alert("เกิดข้อผิดพลาดในการเชื่อมต่อกระเป๋า");
+                }
+            } else {
+                alert("กรุณาติดตั้งส่วนขยาย MetaMask ก่อนใช้งาน");
+            }
+        });
+
+        // 1. เช็คยอดเงิน
+        document.getElementById("checkBalanceBtn").addEventListener("click", async () => {
+            if (!bankContract) return alert("กรุณาเชื่อมต่อ MetaMask ก่อน");
+            try {
+                const balanceWei = await bankContract.checkBlance();
+                const balanceEth = ethers.utils.formatEther(balanceWei);
+                document.getElementById("balanceDisplay").innerText = `ยอดเงินในบัญชี: ${balanceEth} ETH`;
+            } catch (err) {
+                alert("เกิดข้อผิดพลาดในการดึงยอดเงิน: " + err.message);
+            }
+        });
+
+        // 2. ฝากเงิน
+        document.getElementById("depositBtn").addEventListener("click", async () => {
+            if (!bankContract) return alert("กรุณาเชื่อมต่อ MetaMask ก่อน");
+            try {
+                const ethValue = document.getElementById("depositAmount").value;
+                const weiValue = ethers.utils.parseEther(ethValue);
+                const tx = await bankContract.deposit({ value: weiValue });
+                alert("กำลังส่งธุรกรรมฝากเงิน รอการยืนยัน...");
+                await tx.wait();
+                alert("ฝากเงินสำเร็จ!");
+            } catch (err) {
+                alert("ฝากเงินไม่สำเร็จ: " + err.message);
+            }
+        });
+
+        // 3. ถอนเงิน
+        document.getElementById("withdrawBtn").addEventListener("click", async () => {
+            if (!bankContract) return alert("กรุณาเชื่อมต่อ MetaMask ก่อน");
+            try {
+                const amount = document.getElementById("withdrawAmount").value;
+                const tx = await bankContract.withdraw(amount);
+                alert("กำลังส่งธุรกรรมถอนเงิน รอการยืนยัน...");
+                await tx.wait();
+                alert("ถอนเงินสำเร็จ!");
+            } catch (err) {
+                alert("ถอนเงินไม่สำเร็จ: " + err.message);
+            }
+        });
+    </script>
+</body>
+
+</html>
